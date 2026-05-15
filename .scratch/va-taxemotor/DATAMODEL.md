@@ -57,7 +57,7 @@ Fält:
 - `id` (UUID)
 - `calculationCaseId`
 - `revisionNo`
-- `inputSnapshot`
+- `inputSnapshot` (`profileId`, `profileRevisionId`, `taxVersionId`, `mode`, `anlaggningsavgiftScenario`, `brukningsavgiftScenario`)
 - `resultSnapshot`
 - `ruleTrace`
 - `manualAdjustments`

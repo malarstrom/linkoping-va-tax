@@ -118,3 +118,5 @@ The reference document does not specify a rounding rule, so the motor should pre
 The document also contains the rule that brukningsavgift may be debited on estimated consumption between meter readings, while anläggningsavgift is tied to the moment when avgiftsskyldighet inträder.
 
 The system should remain fully traceable: every result should be explainable back to the applicable taxeversion and paragraph-level rule chain.
+
+Implementation should follow `CODING_STANDARDS.md` for TypeScript, React, persistence, and calculation conventions.
