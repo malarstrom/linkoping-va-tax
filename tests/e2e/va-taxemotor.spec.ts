@@ -10,7 +10,7 @@ test('persists a profile revision across reload', async ({ page }) => {
   await expect(nameInput).toHaveValue('Ny fastighet');
 
   await nameInput.fill('QA-fastighet');
-  await expect(page.getByText('QA-fastighet')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'QA-fastighet' })).toBeVisible();
 
   await page.reload();
   await expect(page.getByTestId('profile-name-input')).toHaveValue('QA-fastighet');
@@ -19,8 +19,6 @@ test('persists a profile revision across reload', async ({ page }) => {
 
 test('reruns a saved calculation against another taxeversion', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('tab', { name: 'Resultat' }).click();
-
   await page.getByTestId('save-calculation-button').click();
   await expect(page.getByText('Sparad beräkning')).toBeVisible();
   await expect(page.getByTestId('tax-version-select')).toContainText('Taxa 2026-09-01');
@@ -45,7 +43,7 @@ test('exports and imports with conflict handling', async ({ page }) => {
   await download.saveAs(exportPath);
 
   await page.getByTestId('profile-name-input').fill('Efter export');
-  await expect(page.getByText('Efter export')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Efter export' })).toBeVisible();
 
   await page.getByTestId('import-json-button').click();
   await page.locator('input[type="file"]').setInputFiles(exportPath);

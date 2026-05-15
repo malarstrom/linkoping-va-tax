@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Trash2 } from 'lucide-react';
 import { applyManualAdjustment, createCalculationCase } from '@/domain/calculations';
 import { calculatePreview } from '@/domain/calculate';
 import { createEmptyProfile, toggleService, updateProfile } from '@/domain/profile';
@@ -432,7 +432,7 @@ export default function App() {
                   return (
                     <div
                       key={profile.id}
-                      className={`w-full rounded-xl border px-3 py-2 transition ${
+                      className={`relative w-full rounded-xl border px-3 py-2 pr-11 transition ${
                         active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50'
                       }`}
                     >
@@ -440,18 +440,19 @@ export default function App() {
                         <div className="font-medium">{profile.name}</div>
                         <div className="text-xs opacity-80">{profile.propertyType}</div>
                       </button>
-                      <div className="mt-2 flex justify-end">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          data-testid={`delete-profile-${profile.id}`}
-                          onClick={() => {
-                            if (window.confirm(`Ta bort fastigheten ${profile.name}?`)) deleteProfile(profile.id);
-                          }}
-                        >
-                          Ta bort
-                        </Button>
-                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        data-testid={`delete-profile-${profile.id}`}
+                        aria-label={`Ta bort fastigheten ${profile.name}`}
+                        title={`Ta bort fastigheten ${profile.name}`}
+                        className="absolute right-2 top-2 h-8 w-8 p-0"
+                        onClick={() => {
+                          if (window.confirm(`Ta bort fastigheten ${profile.name}?`)) deleteProfile(profile.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   );
                 })}
@@ -476,7 +477,7 @@ export default function App() {
                     return (
                       <div
                         key={calculation.id}
-                        className={`w-full rounded-xl border px-3 py-2 transition ${
+                        className={`relative w-full rounded-xl border px-3 py-2 pr-11 transition ${
                           active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50'
                         }`}
                       >
@@ -489,18 +490,19 @@ export default function App() {
                           <div className="text-xs opacity-80">{version?.label ?? calculation.taxVersionId}</div>
                           <div className="text-xs opacity-80">{revision?.resultSnapshot.total.toLocaleString('sv-SE') ?? '—'} kr</div>
                         </button>
-                        <div className="mt-2 flex justify-end">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            data-testid={`delete-calculation-${calculation.id}`}
-                            onClick={() => {
-                              if (window.confirm('Ta bort beräkningen?')) deleteCalculation(calculation.id);
-                            }}
-                          >
-                            Ta bort
-                          </Button>
-                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          data-testid={`delete-calculation-${calculation.id}`}
+                          aria-label="Ta bort beräkningen"
+                          title="Ta bort beräkningen"
+                          className="absolute right-2 top-2 h-8 w-8 p-0"
+                          onClick={() => {
+                            if (window.confirm('Ta bort beräkningen?')) deleteCalculation(calculation.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     );
                   })
@@ -509,14 +511,15 @@ export default function App() {
             </section>
           </aside>
 
-          <section className="space-y-4">
-            <Tabs defaultValue="profile" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="profile">Fastighet</TabsTrigger>
-                <TabsTrigger value="resultat">Resultat</TabsTrigger>
-              </TabsList>
+          <section className="space-y-6">
+            <div className="rounded-2xl border bg-white p-6 shadow-sm">
+              <div className="space-y-2 border-b pb-4">
+                <p className="text-sm text-slate-500">Fastighet</p>
+                <h2 className="text-xl font-semibold">{activeProfile.name}</h2>
+                <p className="text-sm text-slate-500">{activeProfile.propertyType}</p>
+              </div>
 
-              <TabsContent value="profile" className="rounded-2xl border bg-white p-6 shadow-sm">
+              <div className="pt-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-2">
                     <span className="text-sm font-medium">Namn</span>
@@ -586,9 +589,10 @@ export default function App() {
                     <strong>Revisioner:</strong> {activeProfile.revisions.length}
                   </p>
                 </div>
-              </TabsContent>
+              </div>
+            </div>
 
-              <TabsContent value="resultat" className="rounded-2xl border bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border bg-white p-6 shadow-sm">
                 {visibleResult ? (
                   <>
                     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -900,8 +904,7 @@ export default function App() {
                 ) : (
                   <p className="text-slate-600">Ingen beräkning tillgänglig.</p>
                 )}
-              </TabsContent>
-            </Tabs>
+            </div>
           </section>
         </div>
       </div>
