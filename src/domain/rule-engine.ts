@@ -1,21 +1,17 @@
 import type { CalculationLine, CalculationResult, TaxVersion } from './types';
 
-function parseParagraphNumber(value: string): number[] {
-  return value
-    .replace(/^§/, '')
-    .split(/[ .]/)
-    .map((part) => Number.parseInt(part, 10))
-    .filter((part) => Number.isFinite(part));
+function normalizeParagraph(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
 }
 
 function paragraphMatches(enabledRule: string, paragraphRef: string): boolean {
-  const left = parseParagraphNumber(enabledRule);
-  const right = parseParagraphNumber(paragraphRef);
-  if (left.length === 0 || right.length === 0) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (right[index] !== left[index]) return false;
-  }
-  return true;
+  const rule = normalizeParagraph(enabledRule);
+  const paragraph = normalizeParagraph(paragraphRef);
+  return (
+    paragraph === rule ||
+    paragraph.startsWith(`${rule}.`) ||
+    paragraph.startsWith(`${rule} `)
+  );
 }
 
 export function isRuleEnabled(taxVersion: TaxVersion, paragraphRef: string): boolean {
