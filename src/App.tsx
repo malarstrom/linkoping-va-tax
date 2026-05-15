@@ -148,6 +148,27 @@ export default function App() {
     });
   };
 
+  const deleteProfile = (profileId: string) => {
+    setWorkspace((current) => {
+      if (!current) return current;
+      const remaining = current.profiles.filter((profile) => profile.id !== profileId);
+      const nextProfiles = remaining.length > 0 ? remaining : [createEmptyProfile()];
+      const nextActiveProfileId = nextProfiles[0]?.id ?? null;
+      const nextCalculations = current.calculations.filter((calculation) => calculation.profileId !== profileId);
+      const nextActiveCalculationId = nextCalculations.some((calculation) => calculation.id === current.activeCalculationId)
+        ? current.activeCalculationId
+        : null;
+
+      return {
+        ...current,
+        profiles: nextProfiles,
+        calculations: nextCalculations,
+        activeProfileId: nextActiveProfileId,
+        activeCalculationId: nextActiveCalculationId,
+      };
+    });
+  };
+
   const updateActiveProfile = (
     patch: Partial<Pick<PropertyProfile, 'name' | 'propertyType' | 'tomtyta' | 'bostadsenheter' | 'services'>>,
   ) => {
@@ -215,6 +236,19 @@ export default function App() {
         activeProfileId: sourceProfile.id,
         calculations: [calculation, ...current.calculations],
         activeCalculationId: calculation.id,
+      };
+    });
+  };
+
+  const deleteCalculation = (calculationId: string) => {
+    setWorkspace((current) => {
+      if (!current) return current;
+      const remaining = current.calculations.filter((calculation) => calculation.id !== calculationId);
+      const nextActiveCalculationId = current.activeCalculationId === calculationId ? remaining[0]?.id ?? null : current.activeCalculationId;
+      return {
+        ...current,
+        calculations: remaining,
+        activeCalculationId: remaining.length > 0 ? nextActiveCalculationId : null,
       };
     });
   };
@@ -346,7 +380,7 @@ export default function App() {
             <div>
               <p className="text-sm font-medium uppercase tracking-wide text-slate-500">VA taxemotor</p>
               <h1 className="mt-2 text-3xl font-semibold">Lokalt arbetsutrymme + versionerade taxeversioner</h1>
-              <p className="mt-2 text-slate-600">Profiler, taxeversioner och beräkningar sparas lokalt i browsern.</p>
+              <p className="mt-2 text-slate-600">Fastigheter, taxeversioner och beräkningar sparas lokalt i browsern.</p>
             </div>
 
             <div className="flex flex-col gap-3 lg:min-w-72">
@@ -387,27 +421,40 @@ export default function App() {
           <aside className="space-y-6 rounded-2xl border bg-white p-4 shadow-sm">
             <section>
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Profiler</h2>
+                <h2 className="text-lg font-semibold">Fastigheter</h2>
                 <Button type="button" onClick={createProfile}>
                   Ny
                 </Button>
               </div>
               <div className="mt-4 space-y-2">
-                {workspace.profiles.map((profile) => (
-                  <button
-                    key={profile.id}
-                    type="button"
-                    onClick={() => setActiveProfile(profile.id)}
-                    className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                      profile.id === activeProfile.id
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="font-medium">{profile.name}</div>
-                    <div className="text-xs opacity-80">{profile.propertyType}</div>
-                  </button>
-                ))}
+                {workspace.profiles.map((profile) => {
+                  const active = profile.id === activeProfile.id;
+                  return (
+                    <div
+                      key={profile.id}
+                      className={`w-full rounded-xl border px-3 py-2 transition ${
+                        active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <button type="button" className="w-full text-left" onClick={() => setActiveProfile(profile.id)}>
+                        <div className="font-medium">{profile.name}</div>
+                        <div className="text-xs opacity-80">{profile.propertyType}</div>
+                      </button>
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          data-testid={`delete-profile-${profile.id}`}
+                          onClick={() => {
+                            if (window.confirm(`Ta bort fastigheten ${profile.name}?`)) deleteProfile(profile.id);
+                          }}
+                        >
+                          Ta bort
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
@@ -424,22 +471,37 @@ export default function App() {
                     const revision = latestRevision(calculation);
                     const profile = workspace.profiles.find((item) => item.id === calculation.profileId);
                     const version = findTaxVersion(workspace.taxVersions, calculation.taxVersionId);
+                    const active = calculation.id === activeCalculation?.id;
 
                     return (
-                      <button
+                      <div
                         key={calculation.id}
-                        type="button"
-                        onClick={() => setWorkspace((current) => (current ? { ...current, activeCalculationId: calculation.id } : current))}
-                        className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                          calculation.id === activeCalculation?.id
-                            ? 'border-slate-900 bg-slate-900 text-white'
-                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                        className={`w-full rounded-xl border px-3 py-2 transition ${
+                          active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50'
                         }`}
                       >
-                        <div className="font-medium">{profile?.name ?? calculation.profileId}</div>
-                        <div className="text-xs opacity-80">{version?.label ?? calculation.taxVersionId}</div>
-                        <div className="text-xs opacity-80">{revision?.resultSnapshot.total.toLocaleString('sv-SE') ?? '—'} kr</div>
-                      </button>
+                        <button
+                          type="button"
+                          className="w-full text-left"
+                          onClick={() => setWorkspace((current) => (current ? { ...current, activeCalculationId: calculation.id } : current))}
+                        >
+                          <div className="font-medium">{profile?.name ?? calculation.profileId}</div>
+                          <div className="text-xs opacity-80">{version?.label ?? calculation.taxVersionId}</div>
+                          <div className="text-xs opacity-80">{revision?.resultSnapshot.total.toLocaleString('sv-SE') ?? '—'} kr</div>
+                        </button>
+                        <div className="mt-2 flex justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            data-testid={`delete-calculation-${calculation.id}`}
+                            onClick={() => {
+                              if (window.confirm('Ta bort beräkningen?')) deleteCalculation(calculation.id);
+                            }}
+                          >
+                            Ta bort
+                          </Button>
+                        </div>
+                      </div>
                     );
                   })
                 )}
@@ -515,7 +577,7 @@ export default function App() {
 
                 <div className="mt-6 rounded-xl border bg-slate-50 p-4 text-sm text-slate-600">
                   <p>
-                    <strong>Profil-ID:</strong> {activeProfile.id}
+                    <strong>Fastighet-ID:</strong> {activeProfile.id}
                   </p>
                   <p>
                     <strong>Current revision:</strong> {activeProfile.currentRevisionId}
@@ -819,10 +881,10 @@ export default function App() {
                         <strong>Taxeversion-ID:</strong> {activeCalculation?.taxVersionId ?? activeTaxVersion.id}
                       </p>
                       <p>
-                        <strong>Profil-ID:</strong> {activeCalculation?.profileId ?? activeProfile.id}
+                        <strong>Fastighet-ID:</strong> {activeCalculation?.profileId ?? activeProfile.id}
                       </p>
                       <p>
-                        <strong>Profilrevision:</strong> {activeCalculation?.revisions.at(-1)?.inputSnapshot.profileRevisionId ?? activeProfile.currentRevisionId}
+                        <strong>Fastighetsrevision:</strong> {activeCalculation?.revisions.at(-1)?.inputSnapshot.profileRevisionId ?? activeProfile.currentRevisionId}
                       </p>
                       <p className="mt-2">
                         <strong>Regelspår:</strong> {visibleResult.ruleTrace.join(' → ')}
