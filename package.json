@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "deploy:pages": "npm run build && npx wrangler pages deploy dist",
     "preview": "vite preview",
     "test:unit": "vitest run",
     "test:e2e": "playwright test"

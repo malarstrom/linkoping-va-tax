@@ -19,6 +19,7 @@ Use these settings when connecting the GitHub repository:
 | Build output directory | `dist` |
 | Root directory | repository root / empty |
 | Install command | `npm ci` |
+| Deploy command | leave empty |
 | Node version | `20` |
 
 Set the Node version either via the dashboard environment variable:
@@ -46,3 +47,25 @@ pages_build_output_dir = "dist"
 ```
 
 Dashboard Git deployments still need the build command/output directory above configured in Cloudflare Pages.
+
+## Troubleshooting: `npx wrangler deploy` fails
+
+Do not set a custom deploy command to `npx wrangler deploy` for this project.
+
+That command deploys a Workers project and expects a Worker entry point or an `[assets]` directory. This repository is configured as a Cloudflare Pages project, so Git deployments should stop after:
+
+```text
+npm run build
+```
+
+Cloudflare Pages then publishes the configured output directory:
+
+```text
+dist
+```
+
+If you need a manual CLI deployment instead of Git integration, use Pages deploy explicitly:
+
+```bash
+npx wrangler pages deploy dist
+```
