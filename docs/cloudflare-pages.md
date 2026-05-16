@@ -30,13 +30,17 @@ NODE_VERSION=20
 
 or rely on the repository `.node-version` file.
 
-## SPA routing
+## Routing
 
-`public/_redirects` is copied into `dist/` by Vite and makes all routes serve `index.html`:
+The app currently has no client-side path router, so it does not need a `_redirects` SPA fallback.
+
+Do not add this rule unless deep-link routing is introduced and tested against Cloudflare Pages' redirect validator:
 
 ```text
 /* /index.html 200
 ```
+
+Cloudflare currently flags that rule as an infinite loop for this project.
 
 ## Wrangler metadata
 
