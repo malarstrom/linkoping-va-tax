@@ -12,6 +12,8 @@ vite.config.d.ts
 # Environment / OS files
 .DS_Store
 .pi/
+.wrangler/
+.dev.vars
 
 # Logs
 npm-debug.log*

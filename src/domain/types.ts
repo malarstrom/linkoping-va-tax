@@ -50,6 +50,9 @@ export interface CalculationLine {
   amount: number;
   calculatedAmount?: number;
   billedAmount?: number;
+  baseAmount?: number;
+  share?: number;
+  reductionReason?: string;
   precision: number;
   ruleIds: string[];
 }

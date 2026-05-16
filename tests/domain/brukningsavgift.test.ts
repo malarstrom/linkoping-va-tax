@@ -16,6 +16,35 @@ function makeTaxVersion(overrides: Partial<TaxVersion['taxValues']> = {}, enable
 }
 
 describe('brukningsavgift', () => {
+  it('reduces brukningsavgift rows by the 2026-09-01 service shares', () => {
+    const profile = createEmptyProfile();
+    profile.tomtyta = '100';
+    profile.services = [
+      { code: 'V', enabled: true },
+      { code: 'S', enabled: false },
+      { code: 'Df', enabled: false },
+      { code: 'Dg', enabled: true },
+    ];
+    const taxVersion = makeTaxVersion({ vatRate: 0 });
+
+    const result = calculateBrukningsavgift(profile, taxVersion, {
+      billingInterval: 'monthly',
+      estimatedConsumptionM3: '120',
+      useEstimatedConsumption: true,
+      meterType: 'DN20 smallhus',
+      propertyTransferRequested: false,
+      annualMeterReadingCompleted: false,
+      latePaymentDays: 0,
+      afterHours: false,
+      specialActions: [],
+    });
+
+    expect(result.lines.find((line) => line.id === 'line-brukning-grundavgift')?.billedAmount).toBeCloseTo(68.42, 2);
+    expect(result.lines.find((line) => line.id === 'line-brukning-vatten')?.billedAmount).toBe(223.5);
+    expect(result.lines.find((line) => line.id === 'line-brukning-dagvatten')?.billedAmount).toBeCloseTo(5.42, 2);
+    expect(result.lines.find((line) => line.id === 'line-mataravgift')?.billedAmount).toBeCloseTo(123.25, 2);
+  });
+
   it('caps special actions and exposes billed vs calculated amounts', () => {
     const profile = createEmptyProfile();
     profile.tomtyta = '100';

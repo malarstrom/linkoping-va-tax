@@ -43,6 +43,18 @@ function combineResults(left: CalculationResult, right: CalculationResult): Calc
   return createResult([...left.lines, ...right.lines], [...left.ruleTrace, ...right.ruleTrace]);
 }
 
+export function calculateCaseResult(
+  profile: PropertyProfile,
+  taxVersion: TaxVersion,
+  anlaggningsScenario: AnlaggningsavgiftScenario = defaultAnlaggningsScenario,
+  brukningsScenario: BrukningsavgiftScenario = defaultBrukningsScenario,
+): CalculationResult {
+  return combineResults(
+    calculateAnlaggningsavgift(profile, taxVersion, anlaggningsScenario),
+    calculateBrukningsavgift(profile, taxVersion, brukningsScenario),
+  );
+}
+
 function createCalculationRevision(
   calculationCaseId: string,
   revisionNo: number,
@@ -65,10 +77,7 @@ function createCalculationRevision(
       anlaggningsavgiftScenario: anlaggningsScenario,
       brukningsavgiftScenario: brukningsScenario,
     },
-    resultSnapshot: combineResults(
-      calculateAnlaggningsavgift(profile, taxVersion, anlaggningsScenario),
-      calculateBrukningsavgift(profile, taxVersion, brukningsScenario),
-    ),
+    resultSnapshot: calculateCaseResult(profile, taxVersion, anlaggningsScenario, brukningsScenario),
     manualAdjustments: [],
     createdAt,
   };
@@ -112,6 +121,31 @@ export function rerunCalculationCase(
     lastInput?.anlaggningsavgiftScenario ?? defaultAnlaggningsScenario,
     lastInput?.brukningsavgiftScenario ?? defaultBrukningsScenario,
   );
+}
+
+function createManualAdjustmentRevision(
+  calculationCase: CalculationCase,
+  previousRevision: CalculationRevision,
+  resultSnapshot: CalculationResult,
+  manualAdjustments: ManualAdjustment[],
+): CalculationCase {
+  const revision: CalculationRevision = {
+    id: createId('calculation-revision'),
+    calculationCaseId: calculationCase.id,
+    revisionNo: previousRevision.revisionNo + 1,
+    inputSnapshot: previousRevision.inputSnapshot,
+    resultSnapshot,
+    manualAdjustments,
+    createdAt: nowIso(),
+  };
+
+  return {
+    ...calculationCase,
+    status: 'calculated',
+    currentRevisionId: revision.id,
+    updatedAt: revision.createdAt,
+    revisions: [...calculationCase.revisions, revision],
+  };
 }
 
 export function applyManualAdjustment(
@@ -166,21 +200,49 @@ export function applyManualAdjustment(
     createdAt: nowIso(),
   };
 
-  const revision: CalculationRevision = {
-    id: createId('calculation-revision'),
-    calculationCaseId: calculationCase.id,
-    revisionNo: lastRevision.revisionNo + 1,
-    inputSnapshot: lastRevision.inputSnapshot,
-    resultSnapshot: adjustedResult,
-    manualAdjustments: [...lastRevision.manualAdjustments, adjustment],
-    createdAt: nowIso(),
+  return createManualAdjustmentRevision(
+    calculationCase,
+    lastRevision,
+    adjustedResult,
+    [...lastRevision.manualAdjustments, adjustment],
+  );
+}
+
+export function deleteManualAdjustment(calculationCase: CalculationCase, adjustmentId: string): CalculationCase {
+  const lastRevision = calculationCase.revisions[calculationCase.revisions.length - 1];
+  if (!lastRevision) return calculationCase;
+
+  const adjustment = lastRevision.manualAdjustments.find((item) => item.id === adjustmentId);
+  if (!adjustment) {
+    throw new Error('Justeringen finns inte i beräkningen');
+  }
+
+  const targetLine = lastRevision.resultSnapshot.lines.find((line) => line.id === adjustment.targetLineId);
+  if (!targetLine) {
+    throw new Error('Målraden finns inte i beräkningen');
+  }
+
+  const adjustedLines = lastRevision.resultSnapshot.lines.map((line) => {
+    if (line.id !== adjustment.targetLineId) return line;
+    const billedAmount = (line.billedAmount ?? line.amount) - adjustment.delta;
+    return {
+      ...line,
+      billedAmount,
+      amount: billedAmount,
+    };
+  });
+
+  const adjustedResult = {
+    calculatedTotal: lastRevision.resultSnapshot.calculatedTotal,
+    total: Math.round((lastRevision.resultSnapshot.total - adjustment.delta) * 100) / 100,
+    lines: adjustedLines,
+    ruleTrace: [...lastRevision.resultSnapshot.ruleTrace, `MANUAL_DELETE:${adjustment.targetLineId} (${adjustment.reason})`],
   };
 
-  return {
-    ...calculationCase,
-    status: 'calculated',
-    currentRevisionId: revision.id,
-    updatedAt: revision.createdAt,
-    revisions: [...calculationCase.revisions, revision],
-  };
+  return createManualAdjustmentRevision(
+    calculationCase,
+    lastRevision,
+    adjustedResult,
+    lastRevision.manualAdjustments.filter((item) => item.id !== adjustmentId),
+  );
 }

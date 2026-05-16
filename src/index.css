@@ -4,23 +4,23 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 176 40% 97%;
+    --foreground: 210 36% 16%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 210 36% 16%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 210 36% 16%;
+    --border: 183 22% 84%;
+    --input: 183 22% 84%;
+    --ring: 173 79% 28%;
+    --primary: 173 79% 28%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 179 45% 92%;
+    --secondary-foreground: 173 79% 20%;
+    --muted: 181 33% 95%;
+    --muted-foreground: 210 16% 42%;
+    --accent: 193 83% 90%;
+    --accent-foreground: 191 84% 22%;
     --radius: 0.75rem;
   }
 
@@ -34,9 +34,43 @@
     height: 100%;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
+  :root {
+    color-scheme: light;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     margin: 0;
+    min-height: 100%;
+    background-image:
+      radial-gradient(circle at top left, hsl(173 79% 28% / 0.14), transparent 30%),
+      radial-gradient(circle at top right, hsl(193 83% 42% / 0.14), transparent 24%),
+      linear-gradient(180deg, hsl(176 40% 98%), hsl(176 35% 95%));
+    background-attachment: fixed;
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  ::selection {
+    background: hsl(173 79% 28% / 0.18);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.35) transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
   }
 }

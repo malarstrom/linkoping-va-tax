@@ -1,4 +1,6 @@
 import { clampAmount, createResult, isRuleEnabled, pushTrace } from './rule-engine';
+import { selectedServiceCodes, serviceShare, serviceShareBasis } from './service-shares';
+import { pushVatLine } from './vat';
 import type { BrukningsavgiftScenario, CalculationLine, PropertyProfile, TaxVersion } from './types';
 
 const BILLING_DIVISOR = {
@@ -84,6 +86,11 @@ export function calculateBrukningsavgift(
   const lines: CalculationLine[] = [];
   const ruleTrace: string[] = [];
   const divisor = intervalDivisor(scenario.billingInterval);
+  const enabledServices = selectedServiceCodes(profile.services);
+  const grundShare = serviceShare(taxVersion, 'brukningGrundavgift', enabledServices);
+  const waterShare = serviceShare(taxVersion, 'brukningForbrukning', enabledServices);
+  const dagvattenShare = serviceShare(taxVersion, 'brukningDagvatten', enabledServices);
+  const meterShare = serviceShare(taxVersion, 'brukningMatare', enabledServices);
 
   if (isRuleEnabled(taxVersion, '§13')) {
     pushLine(lines, ruleTrace, {
@@ -91,10 +98,13 @@ export function calculateBrukningsavgift(
       component: 'brukningsavgift',
       paragraphRef: '§13.1 a',
       description: 'Grundavgift',
-      basis: `Årsavgift / ${divisor} (${scenario.billingInterval})`,
-      amount: annualGrundavgift(taxVersion, scenario),
-      calculatedAmount: annualGrundavgift(taxVersion, scenario),
-      billedAmount: annualGrundavgift(taxVersion, scenario),
+      basis: `Årsavgift / ${divisor} (${scenario.billingInterval}), ${serviceShareBasis(taxVersion, 'brukningGrundavgift', enabledServices)}`,
+      amount: annualGrundavgift(taxVersion, scenario) * grundShare,
+      calculatedAmount: annualGrundavgift(taxVersion, scenario) * grundShare,
+      billedAmount: annualGrundavgift(taxVersion, scenario) * grundShare,
+      baseAmount: annualGrundavgift(taxVersion, scenario),
+      share: grundShare,
+      reductionReason: grundShare < 1 ? 'Reducerad efter valda V/S-tjänster' : undefined,
       precision: 2,
       ruleIds: ['§13.1 a', '§18'],
     });
@@ -104,10 +114,13 @@ export function calculateBrukningsavgift(
       component: 'brukningsavgift',
       paragraphRef: '§13.1 b',
       description: scenario.useEstimatedConsumption ? 'Vattenavgift, uppskattad förbrukning' : 'Vattenavgift',
-      basis: scenario.useEstimatedConsumption ? `${parseNumber(scenario.estimatedConsumptionM3)} m³ / ${divisor}` : `0 m³ / ${divisor}`,
-      amount: annualWaterAmount(taxVersion, scenario),
-      calculatedAmount: annualWaterAmount(taxVersion, scenario),
-      billedAmount: annualWaterAmount(taxVersion, scenario),
+      basis: scenario.useEstimatedConsumption ? `${parseNumber(scenario.estimatedConsumptionM3)} m³ / ${divisor}, ${serviceShareBasis(taxVersion, 'brukningForbrukning', enabledServices)}` : `0 m³ / ${divisor}`,
+      amount: annualWaterAmount(taxVersion, scenario) * waterShare,
+      calculatedAmount: annualWaterAmount(taxVersion, scenario) * waterShare,
+      billedAmount: annualWaterAmount(taxVersion, scenario) * waterShare,
+      baseAmount: annualWaterAmount(taxVersion, scenario),
+      share: waterShare,
+      reductionReason: waterShare < 1 ? 'Reducerad efter vald vattentjänst' : undefined,
       precision: 2,
       ruleIds: ['§13.1 b', '§13.3', '§18'],
     });
@@ -117,10 +130,13 @@ export function calculateBrukningsavgift(
       component: 'brukningsavgift',
       paragraphRef: '§13.1 c',
       description: 'Dagvattenavgift',
-      basis: `${parseNumber(profile.tomtyta)} m² / ${divisor}`,
-      amount: annualDagvatten(taxVersion, profile, scenario),
-      calculatedAmount: annualDagvatten(taxVersion, profile, scenario),
-      billedAmount: annualDagvatten(taxVersion, profile, scenario),
+      basis: `${parseNumber(profile.tomtyta)} m² / ${divisor}, ${serviceShareBasis(taxVersion, 'brukningDagvatten', enabledServices)}`,
+      amount: annualDagvatten(taxVersion, profile, scenario) * dagvattenShare,
+      calculatedAmount: annualDagvatten(taxVersion, profile, scenario) * dagvattenShare,
+      billedAmount: annualDagvatten(taxVersion, profile, scenario) * dagvattenShare,
+      baseAmount: annualDagvatten(taxVersion, profile, scenario),
+      share: dagvattenShare,
+      reductionReason: dagvattenShare < 1 ? 'Reducerad efter valda dagvattentjänster' : undefined,
       precision: 2,
       ruleIds: ['§13.1 c', '§15', '§18'],
     });
@@ -130,10 +146,13 @@ export function calculateBrukningsavgift(
       component: 'brukningsavgift',
       paragraphRef: '§13.1 d-g',
       description: 'Mätaravgift',
-      basis: `${scenario.meterType} / ${divisor}`,
-      amount: meterFee(taxVersion, scenario),
-      calculatedAmount: meterFee(taxVersion, scenario),
-      billedAmount: meterFee(taxVersion, scenario),
+      basis: `${scenario.meterType} / ${divisor}, ${serviceShareBasis(taxVersion, 'brukningMatare', enabledServices)}`,
+      amount: meterFee(taxVersion, scenario) * meterShare,
+      calculatedAmount: meterFee(taxVersion, scenario) * meterShare,
+      billedAmount: meterFee(taxVersion, scenario) * meterShare,
+      baseAmount: meterFee(taxVersion, scenario),
+      share: meterShare,
+      reductionReason: meterShare < 1 ? 'Reducerad efter vald vattentjänst' : undefined,
       precision: 2,
       ruleIds: ['§13.1 d-g', '§18'],
     });
@@ -216,22 +235,7 @@ export function calculateBrukningsavgift(
     pushTrace(ruleTrace, '§17', 'avstängd i taxeversionen');
   }
 
-  const subtotal = lines.reduce((sum, line) => sum + (line.billedAmount ?? line.amount), 0);
-  if (isRuleEnabled(taxVersion, '§2')) {
-    const vat = subtotal * (taxVersion.taxValues.vatRate ?? 0.25);
-    pushLine(lines, ruleTrace, {
-      id: 'line-moms',
-      component: 'moms',
-      paragraphRef: '§2',
-      description: 'Mervärdesskatt',
-      basis: '25 % på avgiftsunderlag',
-      amount: vat,
-      calculatedAmount: vat,
-      billedAmount: vat,
-      precision: 2,
-      ruleIds: ['§2'],
-    });
-  }
+  pushVatLine(lines, taxVersion, ruleTrace, '25 % på brukningsavgifter');
 
   const totalBeforeInterest = lines.reduce((sum, line) => sum + (line.billedAmount ?? line.amount), 0);
   const interestRate = taxVersion.taxValues.lateInterestRate ?? 0.08;

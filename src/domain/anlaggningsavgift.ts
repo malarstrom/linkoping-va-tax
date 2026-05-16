@@ -1,4 +1,6 @@
-import { clampAmount, createResult, isRuleEnabled, pushTrace } from './rule-engine';
+import { createResult, isRuleEnabled, pushTrace } from './rule-engine';
+import { selectedServiceCodes, serviceShare, serviceShareBasis } from './service-shares';
+import { pushVatLine } from './vat';
 import type { CalculationLine, AnlaggningsavgiftScenario, PropertyProfile, TaxVersion } from './types';
 
 const SERVICE_PARAGRAPH_BY_TYPE = {
@@ -80,8 +82,9 @@ export function calculateAnlaggningsavgift(
 ) {
   const lines: CalculationLine[] = [];
   const ruleTrace: string[] = [];
-  const enabledServices = profile.services.filter((service) => service.enabled).map((service) => service.code);
-  const serviceCount = enabledServices.filter((code) => code !== 'Df' || !scenario.dfWithoutConnection).length;
+  const enabledServices = selectedServiceCodes(profile.services);
+  const connectionServices = enabledServices.filter((code) => code !== 'Df' || !scenario.dfWithoutConnection);
+  const serviceCount = connectionServices.filter((code) => code !== 'Dg').length;
   const serviceAmount = serviceCount > 0 ? serviceFeeAmount(taxVersion, serviceCount) : 0;
   const sharedFactor = Math.max(1, scenario.sharedConnectionCount || 1);
   const sharedServiceAmount = serviceAmount / sharedFactor;
@@ -93,10 +96,13 @@ export function calculateAnlaggningsavgift(
       component: 'anläggningsavgift',
       paragraphRef: SERVICE_PARAGRAPH_BY_TYPE[profile.propertyType],
       description: scenario.sharedConnectionCount > 1 ? 'Servisavgift, delad förbindelsepunkt' : 'Servisavgift',
-      basis: `${serviceCount} tjänster`,
+      basis: `${serviceCount} servisledning${serviceCount === 1 ? '' : 'ar'}${sharedFactor > 1 ? ` / ${sharedFactor} förbindelsepunkter` : ''}`,
       amount: sharedServiceAmount,
       calculatedAmount: sharedServiceAmount,
       billedAmount: sharedServiceAmount,
+      baseAmount: serviceAmount,
+      share: sharedFactor > 1 ? 1 / sharedFactor : 1,
+      reductionReason: sharedFactor > 1 ? 'Reducerad för delad förbindelsepunkt' : undefined,
       precision: 2,
       ruleIds: [SERVICE_PARAGRAPH_BY_TYPE[profile.propertyType]],
     });
@@ -106,16 +112,20 @@ export function calculateAnlaggningsavgift(
 
   if (isRuleEnabled(taxVersion, CONNECTION_PARAGRAPH_BY_TYPE[profile.propertyType])) {
     const connectionBase = taxVersion.taxValues.forbindelsepunkt;
-    const connectionAmount = scenario.samfollighet ? connectionBase * 0.8 : connectionBase;
+    const connectionShare = serviceShare(taxVersion, 'anlaggningForbindelsepunkt', connectionServices);
+    const connectionAmount = (scenario.samfollighet ? connectionBase * 0.8 : connectionBase) * connectionShare;
     pushLine(lines, ruleTrace, {
       id: 'line-forbindelsepunkt',
       component: 'anläggningsavgift',
       paragraphRef: CONNECTION_PARAGRAPH_BY_TYPE[profile.propertyType],
       description: scenario.samfollighet ? 'Förbindelsepunktsavgift, samfällighetsreduktion' : 'Förbindelsepunktsavgift',
-      basis: scenario.samfollighet ? '80 % av full avgift' : 'full avgift',
+      basis: `${serviceShareBasis(taxVersion, 'anlaggningForbindelsepunkt', connectionServices)}${scenario.samfollighet ? ', 80 % samfällighet' : ''}`,
       amount: connectionAmount,
       calculatedAmount: connectionAmount,
       billedAmount: connectionAmount,
+      baseAmount: connectionBase,
+      share: connectionShare * (scenario.samfollighet ? 0.8 : 1),
+      reductionReason: connectionShare < 1 || scenario.samfollighet ? 'Reducerad efter valda tjänster och eventuell samfällighetsregel' : undefined,
       precision: 2,
       ruleIds: [CONNECTION_PARAGRAPH_BY_TYPE[profile.propertyType]],
     });
@@ -125,8 +135,9 @@ export function calculateAnlaggningsavgift(
 
   const units = parseUnits(profile.bostadsenheter);
   const baseArea = parseArea(profile.tomtyta);
+  const areaShare = serviceShare(taxVersion, 'anlaggningTomtyta', connectionServices);
   const existingAreaCharge = isRuleEnabled(taxVersion, AREA_PARAGRAPH_BY_TYPE[profile.propertyType])
-    ? calcLimitedAreaAmount(baseArea, taxVersion.taxValues.tomtyteavgift, tomtyteCap)
+    ? calcLimitedAreaAmount(baseArea, taxVersion.taxValues.tomtyteavgift * areaShare, tomtyteCap)
     : 0;
   if (isRuleEnabled(taxVersion, AREA_PARAGRAPH_BY_TYPE[profile.propertyType])) {
     pushLine(lines, ruleTrace, {
@@ -134,14 +145,17 @@ export function calculateAnlaggningsavgift(
       component: 'anläggningsavgift',
       paragraphRef: AREA_PARAGRAPH_BY_TYPE[profile.propertyType],
       description: 'Tomtyteavgift',
-      basis: `${baseArea} m²`,
+      basis: `${baseArea} m², ${serviceShareBasis(taxVersion, 'anlaggningTomtyta', connectionServices)}`,
       amount: existingAreaCharge,
-      calculatedAmount: baseArea * taxVersion.taxValues.tomtyteavgift,
+      calculatedAmount: baseArea * taxVersion.taxValues.tomtyteavgift * areaShare,
       billedAmount: existingAreaCharge,
+      baseAmount: baseArea * taxVersion.taxValues.tomtyteavgift,
+      share: areaShare,
+      reductionReason: areaShare < 1 ? 'Reducerad efter valda tjänster' : undefined,
       precision: 2,
       ruleIds: [AREA_PARAGRAPH_BY_TYPE[profile.propertyType]],
     });
-    if (baseArea > 0 && existingAreaCharge < baseArea * taxVersion.taxValues.tomtyteavgift) {
+    if (baseArea > 0 && existingAreaCharge < baseArea * taxVersion.taxValues.tomtyteavgift * areaShare) {
       pushTrace(ruleTrace, AREA_PARAGRAPH_BY_TYPE[profile.propertyType], 'begränsad av tomtytebegränsningsregeln');
     }
   } else {
@@ -149,15 +163,20 @@ export function calculateAnlaggningsavgift(
   }
 
   if (isRuleEnabled(taxVersion, UNIT_PARAGRAPH_BY_TYPE[profile.propertyType])) {
+    const unitShare = serviceShare(taxVersion, 'anlaggningBostadsenhet', connectionServices);
+    const amount = units * taxVersion.taxValues.bostadsenhetsavgift * unitShare;
     pushLine(lines, ruleTrace, {
       id: 'line-bostadsenheter',
       component: 'anläggningsavgift',
       paragraphRef: UNIT_PARAGRAPH_BY_TYPE[profile.propertyType],
       description: 'Bostadsenhetsavgift',
-      basis: `${units} bostadsenheter`,
-      amount: units * taxVersion.taxValues.bostadsenhetsavgift,
-      calculatedAmount: units * taxVersion.taxValues.bostadsenhetsavgift,
-      billedAmount: units * taxVersion.taxValues.bostadsenhetsavgift,
+      basis: `${units} bostadsenheter, ${serviceShareBasis(taxVersion, 'anlaggningBostadsenhet', connectionServices)}`,
+      amount,
+      calculatedAmount: amount,
+      billedAmount: amount,
+      baseAmount: units * taxVersion.taxValues.bostadsenhetsavgift,
+      share: unitShare,
+      reductionReason: unitShare < 1 ? 'Reducerad efter valda tjänster' : undefined,
       precision: 2,
       ruleIds: [UNIT_PARAGRAPH_BY_TYPE[profile.propertyType]],
     });
@@ -187,20 +206,23 @@ export function calculateAnlaggningsavgift(
     const addedArea = parseArea(scenario.addedTomtyta);
     const alreadyBilledArea = lines.find((line) => line.id === 'line-tomtyta')?.billedAmount ?? 0;
     const remainingCap = Math.max(0, tomtyteCap - alreadyBilledArea);
-    const billedAmount = calcLimitedAreaAmount(addedArea, taxVersion.taxValues.tomtyteavgift, remainingCap);
+    const billedAmount = calcLimitedAreaAmount(addedArea, taxVersion.taxValues.tomtyteavgift * areaShare, remainingCap);
     pushLine(lines, ruleTrace, {
       id: 'line-tillkommande-tomtyta',
       component: 'anläggningsavgift',
       paragraphRef: ADDITIONAL_AREA_PARAGRAPH,
       description: 'Tillkommande tomtyteavgift',
-      basis: `${addedArea} m²`,
+      basis: `${addedArea} m², ${serviceShareBasis(taxVersion, 'anlaggningTomtyta', connectionServices)}`,
       amount: billedAmount,
-      calculatedAmount: addedArea * taxVersion.taxValues.tomtyteavgift,
+      calculatedAmount: addedArea * taxVersion.taxValues.tomtyteavgift * areaShare,
       billedAmount,
+      baseAmount: addedArea * taxVersion.taxValues.tomtyteavgift,
+      share: areaShare,
+      reductionReason: areaShare < 1 ? 'Reducerad efter valda tjänster' : undefined,
       precision: 2,
       ruleIds: [ADDITIONAL_AREA_PARAGRAPH],
     });
-    if (addedArea > 0 && billedAmount < addedArea * taxVersion.taxValues.tomtyteavgift) {
+    if (addedArea > 0 && billedAmount < addedArea * taxVersion.taxValues.tomtyteavgift * areaShare) {
       pushTrace(ruleTrace, ADDITIONAL_AREA_PARAGRAPH, 'begränsad av tomtytebegränsningsregeln');
     }
   } else if (scenario.addedTomtyta.trim()) {
@@ -208,16 +230,20 @@ export function calculateAnlaggningsavgift(
   }
 
   if (scenario.addedBostadsenheter > 0 && isRuleEnabled(taxVersion, ADDITIONAL_UNIT_PARAGRAPH)) {
-    const amount = scenario.addedBostadsenheter * taxVersion.taxValues.bostadsenhetsavgift;
+    const unitShare = serviceShare(taxVersion, 'anlaggningBostadsenhet', connectionServices);
+    const amount = scenario.addedBostadsenheter * taxVersion.taxValues.bostadsenhetsavgift * unitShare;
     pushLine(lines, ruleTrace, {
       id: 'line-tillkommande-bostadsenheter',
       component: 'anläggningsavgift',
       paragraphRef: ADDITIONAL_UNIT_PARAGRAPH,
       description: 'Tillkommande bostadsenhetsavgift',
-      basis: `${scenario.addedBostadsenheter} bostadsenheter`,
+      basis: `${scenario.addedBostadsenheter} bostadsenheter, ${serviceShareBasis(taxVersion, 'anlaggningBostadsenhet', connectionServices)}`,
       amount,
       calculatedAmount: amount,
       billedAmount: amount,
+      baseAmount: scenario.addedBostadsenheter * taxVersion.taxValues.bostadsenhetsavgift,
+      share: unitShare,
+      reductionReason: unitShare < 1 ? 'Reducerad efter valda tjänster' : undefined,
       precision: 2,
       ruleIds: [ADDITIONAL_UNIT_PARAGRAPH],
     });
@@ -226,22 +252,28 @@ export function calculateAnlaggningsavgift(
   }
 
   if (scenario.dfWithoutConnection && isRuleEnabled(taxVersion, ADDITIONAL_DF_PARAGRAPH)) {
-    const amount = taxVersion.taxValues.dagvattenutanforbindelsepunkt;
+    const dfShare = serviceShare(taxVersion, 'anlaggningDfUtanForbindelsepunkt', ['Df']);
+    const amount = taxVersion.taxValues.dagvattenutanforbindelsepunkt * dfShare;
     pushLine(lines, ruleTrace, {
       id: 'line-df-utan-forbindelsepunkt',
       component: 'anläggningsavgift',
       paragraphRef: DFPARAGRAPH_BY_TYPE[profile.propertyType],
       description: 'Dagvatten utan förbindelsepunkt',
-      basis: 'Df utan etablerad förbindelsepunkt',
+      basis: `Df utan etablerad förbindelsepunkt, ${serviceShareBasis(taxVersion, 'anlaggningDfUtanForbindelsepunkt', ['Df'])}`,
       amount,
       calculatedAmount: amount,
       billedAmount: amount,
+      baseAmount: taxVersion.taxValues.dagvattenutanforbindelsepunkt,
+      share: dfShare,
+      reductionReason: dfShare < 1 ? 'Reducerad till Df-andel enligt §5.1 e / §6.1 d' : undefined,
       precision: 2,
       ruleIds: [ADDITIONAL_DF_PARAGRAPH],
     });
   } else if (scenario.dfWithoutConnection) {
     pushSkipped(ruleTrace, ADDITIONAL_DF_PARAGRAPH);
   }
+
+  pushVatLine(lines, taxVersion, ruleTrace, '25 % på anläggningsavgifter', 'line-anlaggning-moms');
 
   return createResult(lines, ruleTrace);
 }

@@ -31,6 +31,31 @@ test('reruns a saved calculation against another taxeversion', async ({ page }) 
   await expect(page.getByTestId('tax-version-select')).toContainText('Taxa 2026-01-01 (arkivkopia)');
 });
 
+test('opens inline manual adjustment from a live result row', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: /Justera/ }).first().click();
+
+  await expect(page.getByText('Sparad beräkning')).toBeVisible();
+  await expect(page.getByTestId('manual-adjustment-delta-input')).toBeVisible();
+  await expect(page.getByTestId('manual-adjustment-reason-input')).toBeVisible();
+});
+
+test('can delete a manual adjustment from the adjusted row', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('save-calculation-button').click();
+  await page.getByRole('button', { name: /Justera/ }).first().click();
+  await page.getByTestId('manual-adjustment-delta-input').fill('-123');
+  await page.getByTestId('manual-adjustment-reason-input').fill('Felaktig radavgift');
+  await page.getByTestId('save-manual-adjustment-button').click();
+
+  await expect(page.locator('[data-testid^="delete-manual-adjustment-"]')).toHaveCount(2);
+  await page.locator('[data-testid^="delete-manual-adjustment-"]').first().click();
+
+  await expect(page.locator('[data-testid^="delete-manual-adjustment-"]')).toHaveCount(0);
+  await expect(page.getByText('Inga manuella justeringar ännu.')).toBeVisible();
+});
+
 test('exports and imports with conflict handling', async ({ page }) => {
   await page.goto('/');
 
